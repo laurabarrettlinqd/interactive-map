@@ -1,0 +1,503 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Product Cluster Map</title>
+
+  <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
+
+  <style>
+    :root {
+      --teal-1: #D9F3F6;
+      --teal-2: #A8DDE3;
+      --teal-3: #66C3CC;
+      --teal-4: #0095A3;
+      --teal-5: #04626B;
+      --teal-6: #023A40;
+      --panel: rgba(255,255,255,0.96);
+      --text: #17363A;
+      --muted: #5F7275;
+      --border: #DCE9EA;
+    }
+
+    html, body, #map {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      font-family: Inter, Arial, Helvetica, sans-serif;
+      color: var(--text);
+    }
+
+    #map { position: absolute; inset: 0; }
+
+    .panel {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      z-index: 10;
+      width: 340px;
+      max-height: calc(100vh - 32px);
+      overflow: hidden;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      box-shadow: 0 12px 40px rgba(2,58,64,0.18);
+      backdrop-filter: blur(8px);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .panel-header {
+      padding: 16px 16px 10px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .panel-title {
+      font-size: 17px;
+      font-weight: 750;
+      margin: 0 0 4px;
+      letter-spacing: -0.01em;
+    }
+
+    .panel-subtitle {
+      font-size: 12px;
+      color: var(--muted);
+      margin: 0;
+      line-height: 1.35;
+    }
+
+    .panel-actions {
+      display: flex;
+      gap: 8px;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    button {
+      appearance: none;
+      border: 1px solid var(--border);
+      background: white;
+      border-radius: 999px;
+      padding: 7px 10px;
+      font-size: 12px;
+      font-weight: 650;
+      color: var(--text);
+      cursor: pointer;
+    }
+
+    button:hover { border-color: var(--teal-4); }
+
+    #search {
+      margin: 0 16px 12px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 9px 12px;
+      font-size: 13px;
+      outline: none;
+    }
+
+    #search:focus { border-color: var(--teal-4); }
+
+    .filter-list {
+      overflow: auto;
+      padding: 0 16px 16px;
+    }
+
+    .filter-row {
+      display: grid;
+      grid-template-columns: 18px 1fr auto;
+      align-items: start;
+      gap: 9px;
+      padding: 8px 0;
+      border-bottom: 1px solid #EEF5F6;
+      font-size: 12px;
+      line-height: 1.25;
+    }
+
+    .filter-row input { margin-top: 1px; accent-color: var(--teal-4); }
+
+    .count {
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+      margin-left: 8px;
+    }
+
+    .legend {
+      position: absolute;
+      right: 16px;
+      bottom: 28px;
+      z-index: 10;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 12px;
+      box-shadow: 0 10px 30px rgba(2,58,64,0.14);
+      min-width: 210px;
+    }
+
+    .legend-title {
+      font-size: 12px;
+      font-weight: 750;
+      margin-bottom: 8px;
+    }
+
+    .legend-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 11px;
+      color: var(--muted);
+      margin: 5px 0;
+    }
+
+    .swatch {
+      width: 16px;
+      height: 16px;
+      border-radius: 999px;
+      border: 1px solid rgba(2,58,64,0.16);
+    }
+
+    .maplibregl-popup-content {
+      border-radius: 12px;
+      padding: 12px;
+      box-shadow: 0 10px 30px rgba(2,58,64,0.22);
+      font-family: Inter, Arial, Helvetica, sans-serif;
+      max-width: 290px;
+    }
+
+    .tooltip-title {
+      font-weight: 800;
+      margin-bottom: 6px;
+      color: var(--text);
+    }
+
+    .tooltip-line {
+      font-size: 12px;
+      color: var(--muted);
+      margin: 3px 0;
+    }
+
+    .tooltip-line strong { color: var(--text); }
+
+    .collapsed-toggle {
+      display: none;
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      z-index: 11;
+      background: white;
+      box-shadow: 0 8px 25px rgba(2,58,64,0.15);
+    }
+
+    @media (max-width: 760px) {
+      .panel {
+        width: calc(100vw - 32px);
+        max-height: 50vh;
+      }
+      .legend {
+        left: 16px;
+        right: auto;
+        bottom: 24px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div id="map"></div>
+
+  <aside class="panel" id="panel">
+    <div class="panel-header">
+      <h1 class="panel-title">Product Cluster Map</h1>
+      <p class="panel-subtitle">
+        Filter by Product. Clusters use your six-color teal ramp from small to large concentration.
+      </p>
+    </div>
+
+    <div class="panel-actions">
+      <button id="selectAll">Select all</button>
+      <button id="clearAll">Clear all</button>
+      <button id="fitData">Fit to data</button>
+    </div>
+
+    <input id="search" type="search" placeholder="Search products..." />
+    <div class="filter-list" id="filters"></div>
+  </aside>
+
+  <div class="legend">
+    <div class="legend-title">Cluster size</div>
+    <div class="legend-row"><span class="swatch" style="background:#D9F3F6"></span> Smallest</div>
+    <div class="legend-row"><span class="swatch" style="background:#A8DDE3"></span> Small</div>
+    <div class="legend-row"><span class="swatch" style="background:#66C3CC"></span> Medium</div>
+    <div class="legend-row"><span class="swatch" style="background:#0095A3"></span> Large</div>
+    <div class="legend-row"><span class="swatch" style="background:#04626B"></span> Larger</div>
+    <div class="legend-row"><span class="swatch" style="background:#023A40"></span> Largest</div>
+  </div>
+
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+
+  <script>
+    const CLUSTER_COLORS = ['#D9F3F6', '#A8DDE3', '#66C3CC', '#0095A3', '#04626B', '#023A40'];
+    const DATA_URL = './data.json';
+
+    let rawData = [];
+    let selectedProducts = new Set();
+    let productCounts = new Map();
+    let popup = null;
+
+    const map = new maplibregl.Map({
+      container: 'map',
+      style: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
+      center: [-72.2, 41.9],
+      zoom: 6.5,
+      attributionControl: true
+    });
+
+    map.addControl(new maplibregl.NavigationControl({visualizePitch: true}), 'bottom-right');
+
+    function escapeHtml(value) {
+      return String(value ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+    }
+
+    function toFeature(row) {
+      return {
+        type: 'Feature',
+        geometry: {
+          type: 'Point',
+          coordinates: [Number(row.lon), Number(row.lat)]
+        },
+        properties: {...row}
+      };
+    }
+
+    function selectedFeatureCollection() {
+      const features = rawData
+        .filter(row => selectedProducts.has(row.product))
+        .map(toFeature);
+
+      return {type: 'FeatureCollection', features};
+    }
+
+    function updateMapSource() {
+      const source = map.getSource('points');
+      if (source) {
+        source.setData(selectedFeatureCollection());
+      }
+    }
+
+    function fitToFilteredData() {
+      const rows = rawData.filter(row => selectedProducts.has(row.product));
+      if (!rows.length) return;
+
+      const bounds = new maplibregl.LngLatBounds();
+      rows.forEach(row => bounds.extend([Number(row.lon), Number(row.lat)]));
+      map.fitBounds(bounds, {padding: 70, duration: 650, maxZoom: 11});
+    }
+
+    function renderFilters() {
+      const searchTerm = document.getElementById('search').value.trim().toLowerCase();
+      const filters = document.getElementById('filters');
+
+      const products = Array.from(productCounts.keys())
+        .filter(product => product.toLowerCase().includes(searchTerm))
+        .sort((a, b) => {
+          const countDiff = productCounts.get(b) - productCounts.get(a);
+          return countDiff || a.localeCompare(b);
+        });
+
+      filters.innerHTML = products.map(product => {
+        const checked = selectedProducts.has(product) ? 'checked' : '';
+        return `
+          <label class="filter-row">
+            <input type="checkbox" value="${escapeHtml(product)}" ${checked} />
+            <span>${escapeHtml(product)}</span>
+            <span class="count">${productCounts.get(product).toLocaleString()}</span>
+          </label>
+        `;
+      }).join('');
+
+      filters.querySelectorAll('input[type="checkbox"]').forEach(input => {
+        input.addEventListener('change', event => {
+          const product = event.target.value;
+          if (event.target.checked) selectedProducts.add(product);
+          else selectedProducts.delete(product);
+          updateMapSource();
+        });
+      });
+    }
+
+    function buildProductFilter() {
+      productCounts = new Map();
+
+      rawData.forEach(row => {
+        const product = row.product || 'Unknown';
+        row.product = product;
+        productCounts.set(product, (productCounts.get(product) || 0) + 1);
+      });
+
+      selectedProducts = new Set(productCounts.keys());
+      renderFilters();
+    }
+
+    function tooltipHtml(properties) {
+      const cityStateZip = [
+        properties.ZOTC_IBASE_CITY,
+        properties.ZOTC_IBASE_STATE,
+        properties.ZOTC_IBASE_POSTALCODE
+      ].filter(Boolean).join(', ');
+
+      return `
+        <div class="tooltip-title">${escapeHtml(properties.product)}</div>
+        <div class="tooltip-line"><strong>Serial:</strong> ${escapeHtml(properties.SERIALNUMBER)}</div>
+        <div class="tooltip-line"><strong>Model:</strong> ${escapeHtml(properties.MODELNUMBER)}</div>
+        <div class="tooltip-line"><strong>Address:</strong> ${escapeHtml(properties.ZOTC_IBASE_ADDRESS1)}</div>
+        <div class="tooltip-line">${escapeHtml(cityStateZip)}</div>
+        <div class="tooltip-line"><strong>Install date:</strong> ${escapeHtml(properties.UNITINSTALLDATE)}</div>
+      `;
+    }
+
+    function addLayers() {
+      map.addSource('points', {
+        type: 'geojson',
+        data: selectedFeatureCollection(),
+        cluster: true,
+        clusterRadius: 48,
+        clusterMaxZoom: 14
+      });
+
+      map.addLayer({
+        id: 'clusters',
+        type: 'circle',
+        source: 'points',
+        filter: ['has', 'point_count'],
+        paint: {
+          'circle-color': [
+            'step', ['get', 'point_count'],
+            CLUSTER_COLORS[0],
+            10, CLUSTER_COLORS[1],
+            25, CLUSTER_COLORS[2],
+            50, CLUSTER_COLORS[3],
+            100, CLUSTER_COLORS[4],
+            250, CLUSTER_COLORS[5]
+          ],
+          'circle-radius': [
+            'step', ['get', 'point_count'],
+            15,
+            10, 19,
+            25, 23,
+            50, 28,
+            100, 34,
+            250, 42
+          ],
+          'circle-stroke-color': '#ffffff',
+          'circle-stroke-width': 1.5,
+          'circle-opacity': 0.92
+        }
+      });
+
+      map.addLayer({
+        id: 'cluster-count',
+        type: 'symbol',
+        source: 'points',
+        filter: ['has', 'point_count'],
+        layout: {
+          'text-field': ['get', 'point_count_abbreviated'],
+          'text-size': 12,
+          'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold']
+        },
+        paint: {
+          'text-color': [
+            'step', ['get', 'point_count'],
+            '#023A40',
+            50, '#ffffff'
+          ]
+        }
+      });
+
+      map.addLayer({
+        id: 'unclustered-point',
+        type: 'circle',
+        source: 'points',
+        filter: ['!', ['has', 'point_count']],
+        paint: {
+          'circle-color': '#0095A3',
+          'circle-radius': 5,
+          'circle-stroke-width': 1,
+          'circle-stroke-color': '#ffffff',
+          'circle-opacity': 0.86
+        }
+      });
+
+      map.on('click', 'clusters', async (event) => {
+        const features = map.queryRenderedFeatures(event.point, {layers: ['clusters']});
+        const clusterId = features[0].properties.cluster_id;
+        const zoom = await map.getSource('points').getClusterExpansionZoom(clusterId);
+        map.easeTo({center: features[0].geometry.coordinates, zoom});
+      });
+
+      map.on('click', 'unclustered-point', (event) => {
+        const coordinates = event.features[0].geometry.coordinates.slice();
+        const properties = event.features[0].properties;
+
+        if (popup) popup.remove();
+        popup = new maplibregl.Popup({closeButton: true, closeOnClick: true})
+          .setLngLat(coordinates)
+          .setHTML(tooltipHtml(properties))
+          .addTo(map);
+      });
+
+      map.on('mouseenter', 'clusters', () => map.getCanvas().style.cursor = 'pointer');
+      map.on('mouseleave', 'clusters', () => map.getCanvas().style.cursor = '');
+      map.on('mouseenter', 'unclustered-point', () => map.getCanvas().style.cursor = 'pointer');
+      map.on('mouseleave', 'unclustered-point', () => map.getCanvas().style.cursor = '');
+    }
+
+    async function init() {
+      const response = await fetch(DATA_URL);
+      rawData = await response.json();
+
+      rawData = rawData.filter(row =>
+        row.lat !== null &&
+        row.lon !== null &&
+        !Number.isNaN(Number(row.lat)) &&
+        !Number.isNaN(Number(row.lon))
+      );
+
+      buildProductFilter();
+
+      map.on('load', () => {
+        addLayers();
+        fitToFilteredData();
+      });
+
+      document.getElementById('selectAll').addEventListener('click', () => {
+        selectedProducts = new Set(productCounts.keys());
+        renderFilters();
+        updateMapSource();
+        fitToFilteredData();
+      });
+
+      document.getElementById('clearAll').addEventListener('click', () => {
+        selectedProducts.clear();
+        renderFilters();
+        updateMapSource();
+      });
+
+      document.getElementById('fitData').addEventListener('click', fitToFilteredData);
+
+      document.getElementById('search').addEventListener('input', renderFilters);
+    }
+
+    init().catch(error => {
+      console.error(error);
+      alert('Map failed to load. Check that data.json is in the same folder as index.html.');
+    });
+  </script>
+</body>
+</html>
